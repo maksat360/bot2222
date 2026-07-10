@@ -17,6 +17,7 @@ from telegram.ext import (
 )
 from telegram import Update
 from telegram.request import HTTPXRequest
+import httpx
 
 from config import BOT_TOKEN
 from database import init_all_databases, find_employee_by_user_id
@@ -47,7 +48,10 @@ def _build_app(token):
     proxy_url = os.getenv("PROXY_URL", "")
     if proxy_url:
         logger.info(f"🔌 Используется прокси: {proxy_url}")
-        request = HTTPXRequest(proxy_url=proxy_url)
+        # Создаём httpx клиент с прокси
+        transport = httpx.AsyncHTTPTransport(proxy=proxy_url)
+        client = httpx.AsyncClient(transport=transport)
+        request = HTTPXRequest(http_client=client)
         return ApplicationBuilder().token(token).request(request).build()
     else:
         return ApplicationBuilder().token(token).build()
