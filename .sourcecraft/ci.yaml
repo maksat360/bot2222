@@ -41,6 +41,7 @@ workflows:
               YC_FUNCTION_NAME: ${{ cubes.format-name.outputs.function_name }}
               YC_FUNCTION_RUNTIME: python312
               YC_FUNCTION_ENTRYPOINT: bot.handler
+              YC_FUNCTION_TIMEOUT: 30s
               SOURCE_PATH: "./src"
               ENVIRONMENT: "BOT_TOKEN=${{ inputs.bot-token }}"
               PUBLIC: true
