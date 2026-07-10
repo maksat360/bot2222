@@ -8,7 +8,7 @@ on:
 tokens:
   SERVICE_CONNECTION_WITH_TOKEN:
     service_connection: "default-service-connection"
-    scope: org
+    scope: repo
 
 workflows:
   deploy-tg-bot-workflow:
