@@ -4,12 +4,22 @@
 # Требуется: BOT_TOKEN в переменных окружения или .env файле
 
 import os
-import json
-import logging
+import sys
 from dotenv import load_dotenv
 
-# Загружаем .env если есть
+# Загружаем .env ДО ВСЕХ импортов
 load_dotenv()
+
+# Устанавливаем прокси ДО создания httpx клиента
+proxy_url = os.getenv("PROXY_URL", "")
+if proxy_url:
+    os.environ["HTTP_PROXY"] = proxy_url
+    os.environ["HTTPS_PROXY"] = proxy_url
+    os.environ["ALL_PROXY"] = proxy_url
+    print(f"🔌 Прокси: {proxy_url}")
+
+import json
+import logging
 
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -39,21 +49,6 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-
-
-def _setup_proxy():
-    """Настраивает прокси через переменные окружения (httpx подхватит автоматически)."""
-    proxy_url = os.getenv("PROXY_URL", "")
-    if proxy_url:
-        logger.info(f"🔌 Используется прокси: {proxy_url}")
-        os.environ["HTTPS_PROXY"] = proxy_url
-        os.environ["HTTP_PROXY"] = proxy_url
-        os.environ["ALL_PROXY"] = proxy_url
-
-
-def _build_app(token):
-    """Создаёт приложение."""
-    return ApplicationBuilder().token(token).build()
 
 
 async def error_handler(update: Update, context: CallbackContext):
@@ -136,9 +131,8 @@ def _get_application():
 
         # Инициализируем Excel-базы данных
         init_all_databases()
-        _setup_proxy()
 
-        app = _build_app(token)
+        app = ApplicationBuilder().token(token).build()
 
         # Регистрируем команды
         app.add_handler(CommandHandler("start", cmd_start))
@@ -202,11 +196,8 @@ def main():
     init_all_databases()
     print("✅ Базы данных готовы!")
 
-    # Настраиваем прокси (если указан)
-    _setup_proxy()
-
     # Создаём приложение
-    app = _build_app(token)
+    app = ApplicationBuilder().token(token).build()
 
     # Регистрируем команды
     app.add_handler(CommandHandler("start", cmd_start))
