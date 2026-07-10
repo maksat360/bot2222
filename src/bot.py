@@ -16,6 +16,7 @@ from telegram.ext import (
     filters, CallbackContext
 )
 from telegram import Update
+from telegram.request import HTTPXRequest
 
 from config import BOT_TOKEN
 from database import init_all_databases, find_employee_by_user_id
@@ -39,6 +40,17 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+def _build_app(token):
+    """Создаёт приложение с поддержкой прокси (если указан PROXY_URL)."""
+    proxy_url = os.getenv("PROXY_URL", "")
+    if proxy_url:
+        logger.info(f"🔌 Используется прокси: {proxy_url}")
+        request = HTTPXRequest(proxy_url=proxy_url)
+        return ApplicationBuilder().token(token).request(request).build()
+    else:
+        return ApplicationBuilder().token(token).build()
 
 
 async def error_handler(update: Update, context: CallbackContext):
@@ -122,7 +134,7 @@ def _get_application():
         # Инициализируем Excel-базы данных
         init_all_databases()
 
-        app = ApplicationBuilder().token(token).build()
+        app = _build_app(token)
 
         # Регистрируем команды
         app.add_handler(CommandHandler("start", cmd_start))
@@ -186,8 +198,8 @@ def main():
     init_all_databases()
     print("✅ Базы данных готовы!")
 
-    # Создаём приложение
-    app = ApplicationBuilder().token(token).build()
+    # Создаём приложение с поддержкой прокси
+    app = _build_app(token)
 
     # Регистрируем команды
     app.add_handler(CommandHandler("start", cmd_start))
