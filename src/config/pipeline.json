@@ -1,0 +1,8 @@
+{
+  "processes": [
+    { "id": 1, "name": "Раскрой ткани", "role": "Закройщик", "normMinutes": 45, "requiresPhoto": true },
+    { "id": 2, "name": "Пошив верха", "role": "Швея", "normMinutes": 90, "requiresPhoto": false },
+    { "id": 3, "name": "Контроль качества", "role": "Технолог", "normMinutes": 15, "requiresPhoto": true },
+    { "id": 4, "name": "Упаковка", "role": "Упаковщик", "normMinutes": 20, "requiresPhoto": true }
+  ]
+}
