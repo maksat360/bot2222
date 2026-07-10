@@ -85,9 +85,11 @@ workflows:
                 echo "Allowing unauthenticated invocations..."
                 yc serverless function allow-unauthenticated-invoke --name=$YC_FUNCTION_NAME
                 
-                INVOKE_URL=$(yc serverless function get --name=$YC_FUNCTION_NAME --format=json | python3 -c "import sys,json; print(json.load(sys.stdin)['http_invoke_url'])")
+                FUNC_JSON=$(yc serverless function get --name=$YC_FUNCTION_NAME --format=json)
+                INVOKE_URL=$(echo "$FUNC_JSON" | grep -o '"http_invoke_url":"[^"]*"' | cut -d'"' -f4)
+                FUNC_ID=$(echo "$FUNC_JSON" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
                 echo "invoke_url=$INVOKE_URL" >> $SOURCECRAFT_OUTPUT
-                echo "deployment_location=https://console.yandex.cloud/folders/$YC_FOLDER_ID/functions/functions/$(yc serverless function get --name=$YC_FUNCTION_NAME --format=json | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")/overview" >> $SOURCECRAFT_OUTPUT
+                echo "deployment_location=https://console.yandex.cloud/folders/$YC_FOLDER_ID/functions/functions/$FUNC_ID/overview" >> $SOURCECRAFT_OUTPUT
 
           - name: register-with-botfather
             needs:
