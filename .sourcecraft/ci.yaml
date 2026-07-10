@@ -27,73 +27,26 @@ workflows:
     tasks:
       - name: deploy-tg-backend-task
         cubes: 
-          - name: get-iam-token
-            env:
-              ID_TOKEN: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.id_token }}
-              YC_SA_ID: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.service_account_id }}
-            image: cr.yandex/sourcecraft/yc-iam:latest
-
           - name: format-name
-            needs:
-              - get-iam-token
             script:
               - |
                 func_name=$(echo "$YC_BOT_NAME" | tr '[:upper:]' '[:lower:]' | tr -d '_')
                 echo "function_name=$func_name" >> $SOURCECRAFT_OUTPUT
-
+                
           - name: deploy-func
-            needs:
-              - get-iam-token
-              - format-name
             env:
-              YC_IAM_TOKEN: ${{ cubes.get-iam-token.outputs.IAM_TOKEN }}
-              YC_FOLDER_ID: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.folder_id }}
+              ID_TOKEN: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.id_token }}
+              YC_SA_ID: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.service_account_id }}  
+              YC_FOLDER_ID: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.folder_id }} 
               YC_FUNCTION_NAME: ${{ cubes.format-name.outputs.function_name }}
               YC_FUNCTION_RUNTIME: python312
               YC_FUNCTION_ENTRYPOINT: bot.handler
               SOURCE_PATH: "./src"
               ENVIRONMENT: "BOT_TOKEN=${{ inputs.bot-token }}"
-            image:
-              name: cr.yandex/sourcecraft/yc-cli:latest
-              entrypoint: ""
-            script:
-              - |
-                set -eou pipefail
-                yc config set folder-id $YC_FOLDER_ID
-                
-                echo "Checking if function exists..."
-                if ! yc serverless function get --name=$YC_FUNCTION_NAME 2>/dev/null; then
-                  echo "Function does not exist. Creating new function..."
-                  yc serverless function create --name=$YC_FUNCTION_NAME
-                else
-                  echo "Function already exists."
-                fi
-                
-                echo "Deploying new function version..."
-                mkdir -p ./tmp
-                cp -r "$SOURCE_PATH"/* ./tmp/
-                
-                yc serverless function version create \
-                  --function-name=$YC_FUNCTION_NAME \
-                  --runtime $YC_FUNCTION_RUNTIME \
-                  --entrypoint $YC_FUNCTION_ENTRYPOINT \
-                  --execution-timeout 30s \
-                  --memory 128m \
-                  --environment $ENVIRONMENT \
-                  --source-path ./tmp
-                
-                echo "Allowing unauthenticated invocations..."
-                yc serverless function allow-unauthenticated-invoke --name=$YC_FUNCTION_NAME
-                
-                FUNC_JSON=$(yc serverless function get --name=$YC_FUNCTION_NAME --format=json)
-                INVOKE_URL=$(echo "$FUNC_JSON" | grep -o '"http_invoke_url":"[^"]*"' | cut -d'"' -f4)
-                FUNC_ID=$(echo "$FUNC_JSON" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-                echo "invoke_url=$INVOKE_URL" >> $SOURCECRAFT_OUTPUT
-                echo "deployment_location=https://console.yandex.cloud/folders/$YC_FOLDER_ID/functions/functions/$FUNC_ID/overview" >> $SOURCECRAFT_OUTPUT
+              PUBLIC: true
+            image: cr.yandex/sourcecraft/yc-function:latest
 
           - name: register-with-botfather
-            needs:
-              - deploy-func
             env:
               TG_BOT_TOKEN: ${{ inputs.bot-token }}
             script:
@@ -108,8 +61,6 @@ workflows:
                 fi
 
           - name: get-outputs
-            needs:
-              - register-with-botfather
             script:
               - |
                 echo "invoke_url=${{ cubes.deploy-func.outputs.invoke_url }}"
