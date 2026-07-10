@@ -51,11 +51,10 @@ workflows:
               - deploy-func
             script:
               - |
-                echo "📌 Для установки webhook откройте в браузере (с VPN):"
-                echo "${{ cubes.deploy-func.outputs.invoke_url }}/setup-webhook"
+                echo "📌 Откройте эту ссылку в браузере:"
+                echo "${{ cubes.deploy-func.outputs.invoke_url }}"
                 echo ""
-                echo "Или выполните curl:"
-                echo "curl -X GET \"${{ cubes.deploy-func.outputs.invoke_url }}/setup-webhook\""
+                echo "Функция сама установит webhook и вернёт результат."
 
           - name: get-outputs
             needs:
