@@ -20,6 +20,7 @@ if proxy_url:
 
 import json
 import logging
+import urllib.request
 
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -151,11 +152,58 @@ def _get_application():
     return _application
 
 
+def _setup_webhook(invoke_url):
+    """Устанавливает webhook для бота."""
+    token = BOT_TOKEN or os.getenv("BOT_TOKEN")
+    if not token:
+        logger.error("BOT_TOKEN не указан, webhook не установлен")
+        return False
+
+    webhook_url = f"https://api.telegram.org/bot{token}/setWebhook?url={invoke_url}"
+    try:
+        req = urllib.request.Request(webhook_url, method="GET")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+            if result.get("ok"):
+                logger.info(f"✅ Webhook установлен: {invoke_url}")
+                return True
+            else:
+                logger.error(f"❌ Ошибка webhook: {result}")
+                return False
+    except Exception as e:
+        logger.error(f"❌ Не удалось установить webhook: {e}")
+        return False
+
+
 def handler(event, context):
     """Хендлер для Yandex Cloud Functions (HTTP-триггер)."""
     try:
         # Инициализируем базы данных
         init_all_databases()
+
+        # Определяем URL функции из запроса
+        headers = event.get("headers", {})
+        invoke_url = f"https://{headers.get('Host', '')}{headers.get('X-Forwarded-Url', '')}"
+        if not invoke_url or invoke_url == "https://":
+            # Пробуем получить из apiGateway
+            api_gw = event.get("apiGateway", {})
+            invoke_url = api_gw.get("url", "") or os.getenv("INVOKE_URL", "")
+
+        # Если это GET-запрос на /setup-webhook — устанавливаем webhook
+        http_method = event.get("httpMethod", "POST")
+        if http_method == "GET":
+            path = event.get("url", "").split("?")[0]
+            if "setup-webhook" in path or "setup" in path:
+                if invoke_url and invoke_url != "https://":
+                    _setup_webhook(invoke_url)
+                else:
+                    # Пробуем получить URL из переменной окружения
+                    _setup_webhook(os.getenv("INVOKE_URL", ""))
+                return {
+                    "statusCode": 200,
+                    "body": json.dumps({"status": "webhook_setup_done"}),
+                    "headers": {"Content-Type": "application/json"},
+                }
 
         # Парсим входящий запрос от Telegram
         body = json.loads(event.get("body", "{}"))

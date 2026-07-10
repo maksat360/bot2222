@@ -46,21 +46,20 @@ workflows:
               PUBLIC: true
             image: cr.yandex/sourcecraft/yc-function:latest
 
-          - name: register-with-botfather
-            env:
-              TG_BOT_TOKEN: ${{ inputs.bot-token }}
+          - name: setup-webhook
+            needs:
+              - deploy-func
             script:
               - |
-                if [ -n "$TG_BOT_TOKEN" ] && [ "$TG_BOT_TOKEN" != "YOUR_TG_BOT_TOKEN" ]; then
-                    echo "TG_BOT_TOKEN is properly set"
-                    echo "Setting webhook..."
-                    curl --request POST --url https://api.telegram.org/bot$TG_BOT_TOKEN/setWebhook?url=${{cubes.deploy-func.outputs.invoke_url}}
-                    echo "Webhook set!"
-                else
-                    echo "TG_BOT_TOKEN is either not set or equals placeholder value"
-                fi
+                echo "📌 Для установки webhook откройте в браузере (с VPN):"
+                echo "${{ cubes.deploy-func.outputs.invoke_url }}/setup-webhook"
+                echo ""
+                echo "Или выполните curl:"
+                echo "curl -X GET \"${{ cubes.deploy-func.outputs.invoke_url }}/setup-webhook\""
 
           - name: get-outputs
+            needs:
+              - setup-webhook
             script:
               - |
                 echo "invoke_url=${{ cubes.deploy-func.outputs.invoke_url }}"
