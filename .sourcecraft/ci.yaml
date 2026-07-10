@@ -1,8 +1,4 @@
 on:
-  #push:
-  #  - workflows: deploy-tg-bot-workflow
-  #    filter: 
-  #      branches: ["master", "main"]
   pull_request:
     - workflows: deploy-tg-bot-workflow
       filter:
@@ -18,7 +14,7 @@ workflows:
   deploy-tg-bot-workflow:
     inputs:
       bot-username:
-        type: string #- name: Field does not match the pattern /|[a-z][-a-z0-9]{1,61}[a-z0-9]/
+        type: string
         required: true
         description: Your Telegram bot username without _bot from BotFather. Name must match the pattern /|[a-z][-a-z0-9]{1,61}[a-z0-9]/
       bot-token:
@@ -43,8 +39,8 @@ workflows:
               YC_SA_ID: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.service_account_id }}  
               YC_FOLDER_ID: ${{ tokens.SERVICE_CONNECTION_WITH_TOKEN.folder_id }} 
               YC_FUNCTION_NAME: ${{ cubes.format-name.outputs.function_name }}
-              YC_FUNCTION_RUNTIME: nodejs22
-              YC_FUNCTION_ENTRYPOINT: index.handler
+              YC_FUNCTION_RUNTIME: python312
+              YC_FUNCTION_ENTRYPOINT: bot.handler
               SOURCE_PATH: "./src"
               ENVIRONMENT: "BOT_TOKEN=${{ inputs.bot-token }}"
               PUBLIC: true
@@ -55,7 +51,6 @@ workflows:
               TG_BOT_TOKEN: ${{ inputs.bot-token }}
             script:
               - |
-                # Check if TG_BOT_TOKEN is set and not equal to placeholder
                 if [ -n "$TG_BOT_TOKEN" ] && [ "$TG_BOT_TOKEN" != "YOUR_TG_BOT_TOKEN" ]; then
                     echo "TG_BOT_TOKEN is properly set"
                     echo "Setting webhook..."
@@ -76,5 +71,3 @@ workflows:
               paths:
                 - invoke_url.txt
                 - deployment_location.txt
-
-            
