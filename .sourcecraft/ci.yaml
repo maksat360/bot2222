@@ -51,11 +51,13 @@ workflows:
               - deploy-func
             script:
               - |
-                echo "🔄 Устанавливаю webhook..."
+                echo "🔄 Устанавливаю webhook через Telegram API..."
                 INVOKE_URL="${{ cubes.deploy-func.outputs.invoke_url }}"
                 echo "URL функции: $INVOKE_URL"
-                RESPONSE=$(curl -s -X GET "$INVOKE_URL")
-                echo "Ответ: $RESPONSE"
+                RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${{ inputs.bot-token }}/setWebhook" \
+                  -d "url=$INVOKE_URL" \
+                  --max-time 30)
+                echo "Ответ Telegram: $RESPONSE"
 
           - name: get-outputs
             needs:
