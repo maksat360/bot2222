@@ -20,9 +20,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f bot2.2.2/requirements.txt ]; then pip install -r bot2.2.2/requirements.txt; fi
+        if [ -f V2_Bot/requirements.txt ]; then pip install -r V2_Bot/requirements.txt; fi
 
     - name: Run bot
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      run: python bot2.2.2/main.py
+      run: python V2_Bot/main.py
