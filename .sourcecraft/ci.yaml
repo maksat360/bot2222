@@ -8,7 +8,7 @@ on:
 tokens:
   SERVICE_CONNECTION_WITH_TOKEN:
     service_connection: "default-service-connection"
-    scope: org
+    scope: repo
 
 workflows:
   deploy-tg-bot-workflow:
@@ -46,21 +46,22 @@ workflows:
               PUBLIC: true
             image: cr.yandex/sourcecraft/yc-function:latest
 
-          - name: register-with-botfather
-            env:
-              TG_BOT_TOKEN: ${{ inputs.bot-token }}
+          - name: setup-webhook
+            needs:
+              - deploy-func
             script:
               - |
-                if [ -n "$TG_BOT_TOKEN" ] && [ "$TG_BOT_TOKEN" != "YOUR_TG_BOT_TOKEN" ]; then
-                    echo "TG_BOT_TOKEN is properly set"
-                    echo "Setting webhook..."
-                    curl --request POST --url https://api.telegram.org/bot$TG_BOT_TOKEN/setWebhook?url=${{cubes.deploy-func.outputs.invoke_url}}
-                    echo "Webhook set!"
-                else
-                    echo "TG_BOT_TOKEN is either not set or equals placeholder value"
-                fi
+                echo "🔄 Устанавливаю webhook через Telegram API..."
+                INVOKE_URL="${{ cubes.deploy-func.outputs.invoke_url }}"
+                echo "URL функции: $INVOKE_URL"
+                RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${{ inputs.bot-token }}/setWebhook" \
+                  -d "url=$INVOKE_URL" \
+                  --max-time 30)
+                echo "Ответ Telegram: $RESPONSE"
 
           - name: get-outputs
+            needs:
+              - setup-webhook
             script:
               - |
                 echo "invoke_url=${{ cubes.deploy-func.outputs.invoke_url }}"

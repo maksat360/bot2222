@@ -4,8 +4,16 @@
 import os
 from pathlib import Path
 
+# Определяем, запущены ли мы в Yandex Cloud Functions
+_IN_YANDEX_CLOUD = os.getenv("_FUNCTION_NAME") is not None or os.getenv("_HANDLER") is not None
+
 # Пути к файлам
-BASE_DIR = Path(__file__).parent
+if _IN_YANDEX_CLOUD:
+    # В Yandex Cloud Functions можно писать только в /tmp
+    BASE_DIR = Path("/tmp")
+else:
+    BASE_DIR = Path(__file__).parent
+
 DATA_DIR = BASE_DIR / "data"
 TEMPLATES_DIR = BASE_DIR / "templates"
 

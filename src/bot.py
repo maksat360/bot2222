@@ -4,12 +4,24 @@
 # Требуется: BOT_TOKEN в переменных окружения или .env файле
 
 import os
-import json
-import logging
+import sys
 from dotenv import load_dotenv
 
-# Загружаем .env если есть
+# Загружаем .env ДО ВСЕХ импортов
 load_dotenv()
+
+# Устанавливаем прокси ДО создания httpx клиента
+proxy_url = os.getenv("PROXY_URL", "")
+if proxy_url:
+    os.environ["HTTP_PROXY"] = proxy_url
+    os.environ["HTTPS_PROXY"] = proxy_url
+    os.environ["ALL_PROXY"] = proxy_url
+    print(f"🔌 Прокси: {proxy_url}")
+
+import json
+import logging
+import urllib.request
+import asyncio
 
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -39,21 +51,6 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-
-
-def _setup_proxy():
-    """Настраивает прокси через переменные окружения (httpx подхватит автоматически)."""
-    proxy_url = os.getenv("PROXY_URL", "")
-    if proxy_url:
-        logger.info(f"🔌 Используется прокси: {proxy_url}")
-        os.environ["HTTPS_PROXY"] = proxy_url
-        os.environ["HTTP_PROXY"] = proxy_url
-        os.environ["ALL_PROXY"] = proxy_url
-
-
-def _build_app(token):
-    """Создаёт приложение."""
-    return ApplicationBuilder().token(token).build()
 
 
 async def error_handler(update: Update, context: CallbackContext):
@@ -122,12 +119,13 @@ async def handle_text(update: Update, context: CallbackContext):
 # ХЕНДЛЕР ДЛЯ YANDEX CLOUD FUNCTIONS
 # ============================================================
 
-# Глобальный экземпляр приложения для YC Functions
+# Глобальный экземпляр приложения и event loop для YC Functions
 _application = None
+_app_loop = None
 
 
-def _get_application():
-    """Создаёт и возвращает экземпляр приложения (синглтон)."""
+async def _init_app_async():
+    """Создаёт и возвращает экземпляр приложения с полной инициализацией (синглтон)."""
     global _application
     if _application is None:
         token = BOT_TOKEN or os.getenv("BOT_TOKEN")
@@ -136,9 +134,8 @@ def _get_application():
 
         # Инициализируем Excel-базы данных
         init_all_databases()
-        _setup_proxy()
 
-        app = _build_app(token)
+        app = ApplicationBuilder().token(token).build()
 
         # Регистрируем команды
         app.add_handler(CommandHandler("start", cmd_start))
@@ -152,9 +149,47 @@ def _get_application():
         app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
         app.add_error_handler(error_handler)
 
+        # ВАЖНО: инициализируем и запускаем приложение,
+        # чтобы внутренний обработчик очереди update_queue был активен
+        await app.initialize()
+        await app.start()
+
         _application = app
+        logger.info("✅ Приложение PTB инициализировано и запущено")
 
     return _application
+
+
+def _get_or_create_loop():
+    """Возвращает или создаёт event loop (синглтон для YC Functions)."""
+    global _app_loop
+    if _app_loop is None or _app_loop.is_closed():
+        _app_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_app_loop)
+    return _app_loop
+
+
+def _setup_webhook(invoke_url):
+    """Устанавливает webhook для бота."""
+    token = BOT_TOKEN or os.getenv("BOT_TOKEN")
+    if not token:
+        logger.error("BOT_TOKEN не указан, webhook не установлен")
+        return False, "BOT_TOKEN не указан"
+
+    webhook_url = f"https://api.telegram.org/bot{token}/setWebhook?url={invoke_url}"
+    try:
+        req = urllib.request.Request(webhook_url, method="GET")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+            if result.get("ok"):
+                logger.info(f"✅ Webhook установлен: {invoke_url}")
+                return True, f"✅ Webhook установлен: {invoke_url}"
+            else:
+                logger.error(f"❌ Ошибка webhook: {result}")
+                return False, f"❌ Ошибка: {result}"
+    except Exception as e:
+        logger.error(f"❌ Не удалось установить webhook: {e}")
+        return False, f"❌ Ошибка: {e}"
 
 
 def handler(event, context):
@@ -163,17 +198,49 @@ def handler(event, context):
         # Инициализируем базы данных
         init_all_databases()
 
-        # Парсим входящий запрос от Telegram
+        http_method = event.get("httpMethod", "POST")
+
+        # Если это GET-запрос — пытаемся установить webhook
+        if http_method == "GET":
+            headers = event.get("headers", {})
+            host = headers.get("Host", "")
+            url_path = event.get("url", "")
+
+            base_path = url_path
+            for suffix in ["/setup-webhook", "/setup", "/webhook"]:
+                if base_path.endswith(suffix):
+                    base_path = base_path[:-len(suffix)]
+                    break
+
+            invoke_url = f"https://{host}{base_path}"
+
+            if not host:
+                invoke_url = os.getenv("INVOKE_URL", "")
+
+            success, message = _setup_webhook(invoke_url)
+
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "status": "ok" if success else "error",
+                    "message": message,
+                    "invoke_url": invoke_url,
+                }),
+                "headers": {"Content-Type": "application/json"},
+            }
+
+        # POST-запрос — обрабатываем update от Telegram
         body = json.loads(event.get("body", "{}"))
 
-        # Создаём update и обрабатываем
-        app = _get_application()
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(app.process_update(
-            Update.de_json(body, app.bot)
-        ))
+        # Получаем или создаём event loop (единый для всех вызовов)
+        loop = _get_or_create_loop()
+
+        # Инициализируем приложение (если ещё не инициализировано)
+        app = loop.run_until_complete(_init_app_async())
+
+        # Обрабатываем update — process_update сам дожидается завершения обработки
+        update = Update.de_json(body, app.bot)
+        loop.run_until_complete(app.process_update(update))
 
         return {
             "statusCode": 200,
@@ -183,13 +250,12 @@ def handler(event, context):
         logger.error(f"YC Function error: {e}", exc_info=True)
         return {
             "statusCode": 200,
-            "body": "",
+            "body": json.dumps({"error": str(e)}),
         }
 
 
 def main():
     """Запуск бота в режиме polling (локально)."""
-    # Проверяем токен
     token = BOT_TOKEN or os.getenv("BOT_TOKEN")
     if not token:
         print("❌ Ошибка: BOT_TOKEN не указан!")
@@ -197,38 +263,26 @@ def main():
         print("   Или установите переменную окружения BOT_TOKEN")
         return
 
-    # Инициализируем Excel-базы данных
     print("📁 Инициализация Excel-файлов...")
     init_all_databases()
     print("✅ Базы данных готовы!")
 
-    # Настраиваем прокси (если указан)
-    _setup_proxy()
+    app = ApplicationBuilder().token(token).build()
 
-    # Создаём приложение
-    app = _build_app(token)
-
-    # Регистрируем команды
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("newbatch", cmd_new_batch))
     app.add_handler(CommandHandler("setrole", cmd_setrole))
     app.add_handler(CommandHandler("hours", cmd_hours))
 
-    # Обработчики текста (кнопки меню)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    # Обработчик фото (брак)
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
-    # Глобальный обработчик ошибок
     app.add_error_handler(error_handler)
 
     print("🤖 MES V2 бот запущен!")
     print("📌 Нажмите Ctrl+C для остановки")
     print("=" * 40)
 
-    # Запускаем polling
     app.run_polling()
 
 
