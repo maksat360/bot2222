@@ -51,10 +51,11 @@ workflows:
               - deploy-func
             script:
               - |
-                echo "📌 Откройте эту ссылку в браузере:"
-                echo "${{ cubes.deploy-func.outputs.invoke_url }}"
-                echo ""
-                echo "Функция сама установит webhook и вернёт результат."
+                echo "🔄 Устанавливаю webhook..."
+                INVOKE_URL="${{ cubes.deploy-func.outputs.invoke_url }}"
+                echo "URL функции: $INVOKE_URL"
+                RESPONSE=$(curl -s -X GET "$INVOKE_URL")
+                echo "Ответ: $RESPONSE"
 
           - name: get-outputs
             needs:
