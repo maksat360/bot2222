@@ -21,6 +21,7 @@ if proxy_url:
 import json
 import logging
 import urllib.request
+import asyncio
 
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -118,12 +119,13 @@ async def handle_text(update: Update, context: CallbackContext):
 # ХЕНДЛЕР ДЛЯ YANDEX CLOUD FUNCTIONS
 # ============================================================
 
-# Глобальный экземпляр приложения для YC Functions
+# Глобальный экземпляр приложения и event loop для YC Functions
 _application = None
+_app_loop = None
 
 
-def _get_application():
-    """Создаёт и возвращает экземпляр приложения (синглтон)."""
+async def _init_app_async():
+    """Создаёт и возвращает экземпляр приложения с полной инициализацией (синглтон)."""
     global _application
     if _application is None:
         token = BOT_TOKEN or os.getenv("BOT_TOKEN")
@@ -147,9 +149,24 @@ def _get_application():
         app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
         app.add_error_handler(error_handler)
 
+        # ВАЖНО: инициализируем и запускаем приложение,
+        # чтобы внутренний обработчик очереди update_queue был активен
+        await app.initialize()
+        await app.start()
+
         _application = app
+        logger.info("✅ Приложение PTB инициализировано и запущено")
 
     return _application
+
+
+def _get_or_create_loop():
+    """Возвращает или создаёт event loop (синглтон для YC Functions)."""
+    global _app_loop
+    if _app_loop is None or _app_loop.is_closed():
+        _app_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_app_loop)
+    return _app_loop
 
 
 def _setup_webhook(invoke_url):
@@ -185,26 +202,23 @@ def handler(event, context):
 
         # Если это GET-запрос — пытаемся установить webhook
         if http_method == "GET":
-            # Пробуем восстановить URL функции из запроса
             headers = event.get("headers", {})
             host = headers.get("Host", "")
             url_path = event.get("url", "")
-            
-            # Убираем /setup-webhook из пути, чтобы получить базовый URL
+
             base_path = url_path
             for suffix in ["/setup-webhook", "/setup", "/webhook"]:
                 if base_path.endswith(suffix):
                     base_path = base_path[:-len(suffix)]
                     break
-            
+
             invoke_url = f"https://{host}{base_path}"
-            
-            # Если не получилось — пробуем из переменной окружения
+
             if not host:
                 invoke_url = os.getenv("INVOKE_URL", "")
-            
+
             success, message = _setup_webhook(invoke_url)
-            
+
             return {
                 "statusCode": 200,
                 "body": json.dumps({
@@ -218,13 +232,15 @@ def handler(event, context):
         # POST-запрос — обрабатываем update от Telegram
         body = json.loads(event.get("body", "{}"))
 
-        app = _get_application()
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(app.process_update(
-            Update.de_json(body, app.bot)
-        ))
+        # Получаем или создаём event loop (единый для всех вызовов)
+        loop = _get_or_create_loop()
+
+        # Инициализируем приложение (если ещё не инициализировано)
+        app = loop.run_until_complete(_init_app_async())
+
+        # Обрабатываем update — process_update сам дожидается завершения обработки
+        update = Update.de_json(body, app.bot)
+        loop.run_until_complete(app.process_update(update))
 
         return {
             "statusCode": 200,
