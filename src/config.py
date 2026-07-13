@@ -43,4 +43,4 @@ DEFECT_APPROVED = "принят"
 DEFECT_REJECTED = "отклонён"
 
 # Токен бота
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8922842876:AAGAzs9tFpjoLTZ67_atVhRR-b4uuM_KQxM")
