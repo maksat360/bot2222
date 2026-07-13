@@ -4,7 +4,7 @@
 import os
 
 # Токен бота (получить у @BotFather)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8922842876:AAGexcEWd7rG8I8_qocp_6ThZR1bcQCjhqY")
+BOT_TOKEN = "8922842876:AAGexcEWd7rG8I8_qocp_6ThZR1bcQCjhqY"
 
 # Путь к папке облачного хранилища
 CLOUD_PATH = "cloud_storage"
